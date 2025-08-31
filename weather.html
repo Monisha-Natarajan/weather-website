@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Weather App with Geolocation & Glassmorphism</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; }
+    body { background: linear-gradient(to bottom right,#e0f7fa,#ffffff); min-height:100vh; display:flex; flex-direction:column; color:#333; overflow-x:hidden; position: relative; }
+    nav { background:#1976d2; color:white; padding:10px 20px; display:none; align-items:center;}
+    nav .nav-links { margin-left:auto; display:flex; gap:20px; }
+    nav .nav-links a { color:white; text-decoration:none; font-weight:bold; }
+    #home-screen,#weather-container { text-align:center; padding:20px; width:100%; margin-top:60px; }
+    input[type="text"]{ padding:10px; border:none; border-radius:8px; width:200px; }
+    button { margin-top:10px; padding:10px 20px; border:none; border-radius:8px; background:#1976d2; color:white; cursor:pointer; font-weight:bold; }
+    #weather-box {
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border:1px solid rgba(255,255,255,0.3);
+      border-radius:15px;
+      padding:20px; max-width:330px; margin:0 auto;
+      box-shadow:0 8px 30px rgba(0,0,0,0.2);
+      position:relative; color:#000; user-select:none;
+    }
+
+    /* Sun animation positioned at page level */
+    #sun-glow-container {
+      position: fixed;
+      top: 30px;
+      left: 0;
+      z-index: 1000;
+      width: 100px;
+      height: 100px;
+      pointer-events: none;
+    }
+
+    .sun-glow {
+      position: absolute;
+      top: 0;
+      left: -100px;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #fff59d, #ffeb3b, #fbc02d);
+      box-shadow: 0 0 20px 10px rgba(255, 235, 59, 0.5);
+      z-index: 5;
+      animation: slideInSun 2s forwards ease-out, pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes slideInSun {
+      0% { left: -100px; opacity: 0; }
+      100% { left: 30px; opacity: 1; }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+
+    .weather-info{ margin-top:15px; text-align:left; position:relative; z-index:1;}
+    .info-line{ margin:10px 0; font-size:17px; }
+    .info-line i{ margin-right:8px; color:#2196f3; width:20px; }
+    .datetime{ font-size:14px; text-align:center; margin-bottom:10px; font-weight:bold; color:#555; }
+    canvas#weather-canvas{ position:fixed; top:0; left:0; width:100%; height:100%; z-index:-1; pointer-events: none; }
+    #nav-toggle {
+      position:fixed; top:20px; right:20px; background:#1976d2; color:white; border:none;
+      padding:10px 14px; border-radius:8px; font-size:18px; cursor:pointer; z-index:1001; display:none;
+    }
+    #bottom-nav {
+      position:fixed; top:0; right:-200px; width:180px; background:#fff;
+      border-left:1px solid #ccc; border-bottom:1px solid #ccc; display:flex; flex-direction:column;
+      box-shadow:-2px 2px 10px rgba(0,0,0,0.2); z-index:1000; transition:right .4s ease;
+    }
+    #bottom-nav.show{ right:0; }
+    .nav-item { padding:12px 20px; cursor:pointer; border-bottom:1px solid #eee; color:#333; text-align:left; user-select:none; }
+    .nav-item:last-child{ border-bottom:none; }
+    .nav-item:hover{ background:#f0f0f0; }
+    .nav-close{ background:#ff4d4d; color:white; font-weight:bold; }
+    @media(min-width:768px){ nav{ display:flex;} #nav-toggle{ display:none;} }
+    @media(max-width:767px){ #nav-toggle{ display:block;} }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="logo">Weather App</div>
+    <div class="nav-links">
+      <a href="home.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+    </div>
+  </nav>
+
+  <canvas id="weather-canvas"></canvas>
+
+  <!-- Sun glow container at the page level -->
+  <div id="sun-glow-container"></div>
+
+  <!-- Sound Effects -->
+  <audio id="rain-sound" loop>
+    <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+  </audio>
+  <audio id="wind-sound" loop>
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/17/audio_2381eb3952.mp3?filename=strong-wind-blowing-ambient-7465.mp3" type="audio/mpeg">
+  </audio>
+
+  <div id="home-screen">
+    <input type="text" id="city-input" placeholder="Enter City"/>
+    <button onclick="searchWeather()">Search</button>
+    <button onclick="getLocationWeather()" style="margin-left:10px">Use My Location</button>
+  </div>
+
+  <div id="weather-container" style="display:none;">
+    <div class="search-bar" style="margin-bottom:15px;">
+      <input type="text" id="city-search" placeholder="Search another city" style="width:200px; padding:8px; border-radius:6px; border:1px solid #ccc;"/>
+      <button onclick="searchWeatherFromBar()">Search</button>
+    </div>
+    <h2 id="city-name"></h2>
+    <div id="weather-box">
+      <div class="datetime" id="datetime"></div>
+      <div class="weather-info" id="weather-info">Loading...</div>
+      <div class="weather-info" id="tomorrow-info"></div>
+    </div>
+  </div>
+
+  <button id="nav-toggle" onclick="toggleNav()"><i class="fas fa-bars"></i></button>
+  <div id="bottom-nav">
+    <div class="nav-item" onclick="showSection('today')">Today</div>
+    <div class="nav-item" onclick="showSection('tomorrow')">Tomorrow</div>
+    <div class="nav-item nav-close" onclick="toggleNav()">X</div>
+  </div>
+
+  <script>
+    const apiKey = "c44698510f6f1ec14fbf3185191712b8";
+    const canvas = document.getElementById("weather-canvas"), ctx = canvas.getContext("2d");
+    const rainSound = document.getElementById("rain-sound");
+    const windSound = document.getElementById("wind-sound");
+    let particles = [], animationType = "", windSpeed = 0;
+
+    function resizeCanvas(){
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    function clearSunEffect() {
+      document.getElementById("sun-glow-container").innerHTML = "";
+    }
+
+    function applySunEffect() {
+      document.getElementById("sun-glow-container").innerHTML = '<div class="sun-glow"></div>';
+    }
+
+    function stopSounds() {
+      rainSound.pause(); rainSound.currentTime = 0;
+      windSound.pause(); windSound.currentTime = 0;
+    }
+
+    function getLocationWeather(){
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(pos=>{
+          fetchWeatherByCoords(pos.coords.latitude,pos.coords.longitude);
+        },()=>alert("Location access denied."));
+      } else alert("Geolocation not supported.");
+    }
+
+    function searchWeather(){
+      const city = document.getElementById("city-input").value.trim();
+      if(city) fetchWeather(city);
+    }
+
+    function searchWeatherFromBar(){
+      const city = document.getElementById("city-search").value.trim();
+      if(city) fetchWeather(city);
+    }
+
+    function fetchWeather(city){
+      fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`)
+      .then(res=>res.json()).then(data=>{
+        if(data.cod!==200){ alert("City not found."); return; }
+        fetchWeatherByCoords(data.coord.lat,data.coord.lon, data.name);
+      }).catch(()=>alert("Error fetching weather."));
+    }
+
+    function fetchWeatherByCoords(lat, lon, name){
+      fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`)
+      .then(res=>res.json()).then(data=>{
+        windSpeed = data.wind.speed;
+        document.getElementById("home-screen").style.display="none";
+        document.getElementById("weather-container").style.display="block";
+        document.getElementById("city-name").textContent = name || data.name;
+        document.getElementById("datetime").textContent = new Date().toLocaleString();
+        const cond = data.weather[0].main.toLowerCase();
+
+        document.getElementById("weather-info").innerHTML =
+         `<div class="info-line"><i class="fas fa-cloud"></i><strong> Condition:</strong> ${cond}</div>
+          <div class="info-line"><i class="fas fa-thermometer-half"></i><strong> Temp:</strong> ${data.main.temp}°C</div>
+          <div class="info-line"><i class="fas fa-temperature-low"></i><strong> Feels Like:</strong> ${data.main.feels_like}°C</div>
+          <div class="info-line"><i class="fas fa-tint"></i><strong> Humidity:</strong> ${data.main.humidity}%</div>
+          <div class="info-line"><i class="fas fa-wind"></i><strong> Wind Speed:</strong> ${windSpeed} m/s</div>`;
+
+        clearSunEffect();
+        triggerWeatherEffect(cond);
+        fetchTomorrow(lat, lon);
+      }).catch(()=>alert("Error fetching weather."));
+    }
+
+    function fetchTomorrow(lat, lon){
+      fetch(`https://api.openweathermap.org/data/2.5/onecall?lat=${lat}&lon=${lon}&exclude=minutely,hourly,alerts&units=metric&appid=${apiKey}`)
+      .then(res=>res.json()).then(data=>{
+        const t = data.daily[1];
+        const date = new Date(t.dt*1000).toLocaleDateString();
+        document.getElementById("tomorrow-info").innerHTML =
+          `<hr><div class="info-line"><i class="fas fa-calendar"></i><strong> Tomorrow (${date}):</strong></div>
+           <div class="info-line"><i class="fas fa-cloud"></i><strong> Condition:</strong> ${t.weather[0].main}</div>
+           <div class="info-line"><i class="fas fa-thermometer-half"></i><strong> Temp:</strong> ${t.temp.day}°C</div>
+           <div class="info-line"><i class="fas fa-tint"></i><strong> Humidity:</strong> ${t.humidity}%</div>`;
+      });
+    }
+
+    function startAnimation(type){
+      animationType = type;
+      particles = [];
+      const count = type==="rain"?200:(type==="wind"?120:80);
+      for(let i=0;i<count;i++){
+        particles.push({
+          x:Math.random()*canvas.width,
+          y:Math.random()*canvas.height,
+          r:2,
+          xs:type==="wind"?Math.random()*2+1:Math.random()*2-1,
+          ys:type==="rain"?Math.random()*15+8:(type==="wind"?0.5:Math.random()*2+1)
+        });
+      }
+      draw();
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      particles.forEach(p=>{
+        ctx.beginPath();
+        if(animationType==="rain"){
+          ctx.strokeStyle="rgba(66, 165, 245, 0.7)"; ctx.lineWidth=1.5;
+          ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+p.xs,p.y+15); ctx.stroke();
+        } else if(animationType==="wind"){
+          ctx.fillStyle="rgba(200,200,255,0.3)";
+          ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill();
+        }
+        p.x+=p.xs; p.y+=p.ys;
+        if(p.y>canvas.height || p.x>canvas.width || p.x<0){ p.x=Math.random()*canvas.width; p.y=0;}
+      });
+      if(animationType) requestAnimationFrame(draw);
+    }
+
+    function triggerWeatherEffect(cond){
+      stopSounds();
+      if(cond.includes("clear")||cond.includes("sun")){
+        applySunEffect(); startAnimation("");
+      }
+      else if(cond.includes("rain")){
+        startAnimation("rain");
+        rainSound.volume = 0.4; rainSound.play();
+      }
+      else if(windSpeed > 8){
+        startAnimation("wind");
+        windSound.volume = 0.4; windSound.play();
+      } else {
+        startAnimation("");
+      }
+    }
+
+    function toggleNav(){ document.getElementById("bottom-nav").classList.toggle("show"); }
+    function showSection(sec){ alert(`You clicked: ${sec}`); toggleNav(); }
+
+    window.onload = getLocationWeather;
+  </script>
+</body>
+</html>
